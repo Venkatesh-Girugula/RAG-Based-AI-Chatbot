@@ -11,7 +11,7 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 def init_db():
-    db_path = settings.SQLITE_DB_PATH
+    db_path = settings.sqlite_db_path
     db_dir = os.path.dirname(db_path)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
@@ -76,6 +76,26 @@ def init_db():
         """)
         
         conn.commit()
+
+        # Database Schema Migration: Safely add missing columns to chat_messages if they are absent
+        try:
+            cursor.execute("PRAGMA table_info(chat_messages)")
+            existing_cols = {col[1] for col in cursor.fetchall()}
+            
+            needed_cols = {
+                "sources_json": "TEXT",
+                "total_tokens": "INTEGER DEFAULT 0",
+                "feedback_rating": "INTEGER",
+                "feedback_text": "TEXT"
+            }
+            
+            for col_name, col_type in needed_cols.items():
+                if col_name not in existing_cols:
+                    cursor.execute(f"ALTER TABLE chat_messages ADD COLUMN {col_name} {col_type}")
+                    logger.info(f"Database Migration: Added missing column {col_name} to chat_messages.")
+            conn.commit()
+        except Exception as migration_err:
+            logger.error(f"Failed to execute schema migrations on chat_messages table: {migration_err}")
         
         # Seed default admin and user if users table is empty
         cursor.execute("SELECT COUNT(*) FROM users")
@@ -115,7 +135,7 @@ def init_db():
 
 @contextmanager
 def get_db():
-    db_path = settings.SQLITE_DB_PATH
+    db_path = settings.sqlite_db_path
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -125,7 +145,7 @@ def get_db():
 
 def log_event(level: str, module: str, message: str, details_json: str = None):
     try:
-        db_path = settings.SQLITE_DB_PATH
+        db_path = settings.sqlite_db_path
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(

@@ -129,15 +129,39 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Completed Request: {request.method} {request.url.path} - Status: {response.status_code} - Duration: {duration:.4f}s")
     return response
 
+# --- IN-MEMORY SLIDING WINDOW RATE LIMITER ---
+from collections import defaultdict
+
+class InMemoryRateLimiter:
+    def __init__(self):
+        self.requests = defaultdict(list)
+
+    def is_allowed(self, client_id: str, max_requests: int, window_seconds: int) -> bool:
+        now = time.time()
+        cutoff = now - window_seconds
+        # Clean up old timestamps outside sliding window
+        self.requests[client_id] = [t for t in self.requests[client_id] if t > cutoff]
+        
+        if len(self.requests[client_id]) >= max_requests:
+            return False
+            
+        self.requests[client_id].append(now)
+        return True
+
+chat_rate_limiter = InMemoryRateLimiter()
+upload_rate_limiter = InMemoryRateLimiter()
+
 # --- SECURE CRYPTOGRAPHIC TOKEN MANAGER (HMAC Zero-Dependency) ---
 
-SECRET_KEY = settings.SECRET_KEY
+JWT_SECRET_KEY = settings.JWT_SECRET_KEY
 security = HTTPBearer()
 
 def create_access_token(username: str, role: str) -> str:
-    exp = int(time.time()) + 86400 * 7 # 7 days
+    # Use ACCESS_TOKEN_EXPIRE_MINUTES from environment variables, defaulting to 1440 mins (24h)
+    expiry_seconds = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    exp = int(time.time()) + expiry_seconds
     payload = f"{username}:{role}:{exp}"
-    signature = hmac.new(SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    signature = hmac.new(JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
     token_bytes = f"{payload}:{signature}".encode()
     return base64.urlsafe_b64encode(token_bytes).decode().rstrip("=")
 
@@ -152,7 +176,7 @@ def decode_access_token(token: str) -> Optional[dict]:
             return None
         username, role, exp, signature = parts
         payload = f"{username}:{role}:{exp}"
-        expected_sig = hmac.new(SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        expected_sig = hmac.new(JWT_SECRET_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(signature, expected_sig):
             return None
         if int(time.time()) > int(exp):
@@ -347,6 +371,19 @@ def list_documents(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/v1/documents/upload", response_model=DocumentResponse)
 async def upload_document(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    username = current_user["username"]
+    allowed = upload_rate_limiter.is_allowed(
+        username,
+        settings.RATE_LIMIT_UPLOAD_MAX_REQUESTS,
+        settings.RATE_LIMIT_UPLOAD_WINDOW_SECONDS
+    )
+    if not allowed:
+        log_event("WARNING", "SECURITY", f"User {username} exceeded upload rate limits.")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Upload rate limit exceeded. Max {settings.RATE_LIMIT_UPLOAD_MAX_REQUESTS} uploads per {settings.RATE_LIMIT_UPLOAD_WINDOW_SECONDS} seconds."
+        )
+
     file_content = await file.read()
     file_size = len(file_content)
     file_name = file.filename
@@ -362,10 +399,28 @@ async def upload_document(file: UploadFile = File(...), current_user: dict = Dep
         conn.commit()
         
     try:
-        text_content = file_content.decode("utf-8", errors="ignore")
+        text_content = ""
+        if file_name.lower().endswith(".pdf") or file_content.startswith(b"%PDF"):
+            import io
+            import pypdf
+            try:
+                reader = pypdf.PdfReader(io.BytesIO(file_content))
+                extracted_pages = []
+                for page in reader.pages:
+                    extracted = page.extract_text()
+                    if extracted:
+                        extracted_pages.append(extracted)
+                text_content = "\n".join(extracted_pages)
+            except Exception as pdf_err:
+                logger.warning(f"pypdf reader failed for {file_name}, falling back to utf-8 decode: {pdf_err}")
+                text_content = file_content.decode("utf-8", errors="ignore")
+        else:
+            text_content = file_content.decode("utf-8", errors="ignore")
         
         # Split document into chunks
         chunks = vector_store.chunk_document(text_content, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
+        # Filter empty or blank chunks to ensure clean embeddings
+        chunks = [c.strip() for c in chunks if c and c.strip()]
         chunk_count = len(chunks)
         
         all_ids = []
@@ -373,18 +428,20 @@ async def upload_document(file: UploadFile = File(...), current_user: dict = Dep
         all_metadatas = []
         all_documents = []
         
-        for idx, chunk in enumerate(chunks):
-            chunk_id = f"{doc_id}_chunk_{idx}"
-            embedding = embedding_service.get_embedding(chunk, task_type="retrieval_document")
+        if chunks:
+            # Batch generate all embeddings in one clean, rate-limited step
+            embeddings = embedding_service.get_embeddings(chunks, task_type="retrieval_document")
             
-            all_ids.append(chunk_id)
-            all_embeddings.append(embedding)
-            all_metadatas.append({
-                "title": file_name,
-                "chunk_id": chunk_id,
-                "source": file_name
-            })
-            all_documents.append(chunk)
+            for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                chunk_id = f"{doc_id}_chunk_{idx}"
+                all_ids.append(chunk_id)
+                all_embeddings.append(embedding)
+                all_metadatas.append({
+                    "title": file_name,
+                    "chunk_id": chunk_id,
+                    "source": file_name
+                })
+                all_documents.append(chunk)
             
         if all_ids:
             vector_store.initialize()
@@ -578,6 +635,19 @@ def get_analytics(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/v1/chat/")
 async def stream_chat_endpoint(request: ChatRequest, current_user: dict = Depends(get_current_user)):
+    username = current_user["username"]
+    allowed = chat_rate_limiter.is_allowed(
+        username,
+        settings.RATE_LIMIT_CHAT_MAX_REQUESTS,
+        settings.RATE_LIMIT_CHAT_WINDOW_SECONDS
+    )
+    if not allowed:
+        log_event("WARNING", "SECURITY", f"User {username} exceeded chat rate limits.")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Chat rate limit exceeded. Max {settings.RATE_LIMIT_CHAT_MAX_REQUESTS} messages per {settings.RATE_LIMIT_CHAT_WINDOW_SECONDS} seconds."
+        )
+
     session_id = request.sessionId.strip()
     user_msg = request.message.strip()
 

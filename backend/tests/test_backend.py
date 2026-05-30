@@ -64,11 +64,11 @@ def test_successful_retrieval(mock_generate, mock_query_similarity):
 # 2. Unknown Query / 5. Similarity Threshold Failure
 @patch("backend.vectorstore.vector_store.vector_store.query_similarity")
 def test_similarity_threshold_failure(mock_query_similarity):
-    # Mock ChromaDB returning low similarity matches (similarity = 0.6)
-    # Threshold is 0.75, so this chunk must be filtered out
+    # Mock ChromaDB returning low similarity matches (similarity = 0.2)
+    # Threshold is 0.5 or 0.75, so this chunk must be filtered out
     mock_query_similarity.return_value = [{
         "id": "chunk_x",
-        "similarity": 0.6,
+        "similarity": 0.2,
         "metadata": {
             "title": "React TypeScript Best Practices",
             "source": "Frontend-Standard-v2.md",
@@ -88,7 +88,7 @@ def test_similarity_threshold_failure(mock_query_similarity):
     data = response.json()
     assert data["reply"] == "I could not find enough information in the knowledge base to answer this question."
     assert data["retrievedChunks"] == 0
-    assert data["similarityScores"] == [0.6]
+    assert data["similarityScores"] == [0.2]
 
 
 # 3. Empty Query Handling
