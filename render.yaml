@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: aerorag-backend
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SIMILARITY_THRESHOLD
+        value: "0.75"
+      - key: TOP_K
+        value: "3"
+      - key: CHUNK_SIZE
+        value: "500"
+      - key: CHUNK_OVERLAP
+        value: "50"
+      - key: CHROMA_PERSIST_DIR
+        value: /var/data/chromadb
+      - key: SQLITE_DB_PATH
+        value: /var/data/chat_history.db
+      - key: CORS_ORIGINS
+        value: '["*"]' # Lock down to Vercel domain in production settings
+      - key: LOG_LEVEL
+        value: INFO
+    disk:
+      name: database-storage
+      mountPath: /var/data
+      sizeGB: 1

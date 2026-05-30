@@ -1,0 +1,27 @@
+[
+  {
+    "title": "Corporate Security Policy - Data Classification",
+    "content": "All company data is categorized into four classification levels: Public, Internal, Confidential, and Restricted. Public data can be shared freely. Internal data includes general business communications. Confidential data includes salaries, proprietary source code, and employee records. Restricted data includes customer personally identifiable info (PII) and intellectual property which requires encryption at rest and in transit. Standard encryption should use AES-256.",
+    "source": "SecOps-Policy-2026.pdf"
+  },
+  {
+    "title": "FastAPI Production Deployment Guidelines",
+    "content": "When deploying FastAPI services in production, it is mandatory to run behind an ASGI server such as Uvicorn, managed by an orchestration layer like Docker or Kubernetes. Always configure CORS middleware explicitly, enabling only authorized origins. Keep standard debug logging active but hide traceback logs from client error payloads. Secure endpoints with OAuth2, JWT tokens, and rate limits to mitigate Denial of Service (DoS) attacks.",
+    "source": "DevOps-FastAPI-Deploy.md"
+  },
+  {
+    "title": "React TypeScript Best Practices",
+    "content": "Developers must strictly avoid the use of the 'any' type in React TypeScript applications. Strongly type all functional components with React.FC, and define clear prop interfaces. Leverage customized hooks for sharing logic and managing data fetching. For state management, clean context providers or Zustand is highly recommended. Always clean up window subscriptions or event listeners inside useEffect cleanup callback functions.",
+    "source": "Frontend-Standard-v2.md"
+  },
+  {
+    "title": "Git Branching and Pull Request Standard",
+    "content": "The engineering team utilizes a Git branch strategy where master/main represents current production-ready code. All feature work must occur in descriptive feature branches prefixed with 'feature/'. Every pull request requires successful automated testing compilation and at least one peer approval. Once approved, pull requests are squash-merged into main to maintain a linear and clean commit history.",
+    "source": "Git-Workflow-Standard.md"
+  },
+  {
+    "title": "Gemini API and Embedding Retrieval Workflow",
+    "content": "To implement Retrieval Augmented Generation (RAG) using Gemini, the system first creates an embedding of the user's query using the text-embedding-004 model. This vector is compared against document chunk embeddings in ChromaDB using cosine similarity. If the similarity score is above the configured threshold of 0.75, the top-k (k=3) matches are compiled. The LLM (gemini-1.5-flash) receives these matches inside the system context alongside a 5-exchange chat memory to generate a fully grounded response. If no documents exceed the threshold, the query workflow must immediately return a fallback answer indicating search failure: 'I could not find enough information in the knowledge base to answer this question.'",
+    "source": "RAG-Gemini-Arch.md"
+  }
+]

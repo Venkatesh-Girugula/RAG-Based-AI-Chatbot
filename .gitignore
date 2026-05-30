@@ -1,0 +1,40 @@
+# Environmental variables / Secrets
+.env
+.env.*
+!.env.example
+*.env
+
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# Node/Frontend specific
+node_modules/
+dist/
+.svelte-kit/
+.next/
+.nuxt/
+out/
+build/
+.cache/
+.parcel-cache/
+
+# Databases / Vector stores
+data/chat_history.db
+data/chromadb/
+*.db
+*.sqlite3
+
+# Docker
+.docker/
+
+# OS specific
+.DS_Store
+Thumbs.db
