@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 
 class ChatRequest(BaseModel):
     sessionId: str = Field(..., description="The unique session identifier for tracking conversation history.", min_length=1)
@@ -13,3 +13,42 @@ class ChatResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = Field(..., description="The operational health status of the service.")
+
+class UserRegister(BaseModel):
+    username: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=3)
+    password: str = Field(..., min_length=1)
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: str
+
+class FeedbackRequest(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    text: Optional[str] = None
+
+class DocumentResponse(BaseModel):
+    id: str
+    name: str
+    size: int
+    status: str
+    chunk_count: int
+    created_at: str
+
+class AnalyticsResponse(BaseModel):
+    total_users: int
+    total_documents: int
+    total_conversations: int
+    total_messages: int
+    average_similarity_score: float
+    total_tokens_used: int
+
+class LogResponse(BaseModel):
+    id: int
+    level: str
+    module: str
+    message: str
+    details_json: Optional[str] = None
+    created_at: str

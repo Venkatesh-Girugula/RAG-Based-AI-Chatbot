@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = Field(default="", validation_alias="GEMINI_API_KEY")
     EMBEDDING_MODEL: str = "models/gemini-embedding-001"
     LLM_MODEL: str = "models/gemini-2.5-flash"
+    SECRET_KEY: str = "enterprise-rag-assistant-secret-key-2026-secure-default"
 
     # RAG Settings
     SIMILARITY_THRESHOLD: float = 0.75

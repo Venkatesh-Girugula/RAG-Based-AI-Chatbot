@@ -91,4 +91,58 @@ USER QUESTION: {query}
             logger.error(f"Gemini LLM generation failure: {e}")
             raise e
 
+    def generate_response_stream(
+        self, 
+        query: str, 
+        context: str, 
+        history: List[Dict[str, str]]
+    ):
+        """
+        Generates word-by-word streaming responses using Gemini stream=True.
+        Yields text chunks.
+        """
+        self._ensure_initialized()
+
+        # Format prior chat history
+        history_formatted = ""
+        if history:
+            history_parts = []
+            for msg in history:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                history_parts.append(f"{role_label}: {msg['content']}")
+            history_formatted = "\n".join(history_parts)
+        else:
+            history_formatted = "No prior exchanges."
+
+        system_prompt = (
+            "You are a grounded assistant.\n"
+            "Use ONLY the retrieved context provided below to answer the user's question.\n"
+            "Never invent information. Do not extrapolate, assume, or reference outside facts.\n"
+            "If the answer is unavailable in the retrieved context, clearly state that you do not know.\n"
+            "Ensure the answer is professional, thorough, and highly accurate based on the context."
+        )
+
+        prompt = f"""SYSTEM:
+{system_prompt}
+
+CONTEXT:
+{context}
+
+CHAT HISTORY:
+{history_formatted}
+
+USER QUESTION: {query}
+"""
+
+        try:
+            logger.info("Invoking streaming Gemini LLM with context-infused prompt.")
+            model = genai.GenerativeModel(settings.LLM_MODEL)
+            response = model.generate_content(prompt, stream=True)
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+        except Exception as e:
+            logger.error(f"Gemini LLM streaming generation failure: {e}")
+            raise e
+
 llm_service = LLMService()
