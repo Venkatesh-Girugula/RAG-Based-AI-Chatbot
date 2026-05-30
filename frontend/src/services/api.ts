@@ -4,7 +4,7 @@ import { User, Document, Conversation, Message, SystemLog, Analytics, SourceCita
 
 // Create central Axios instance
 export const apiClient = axios.create({
-  baseURL: '', // Relative baseURL proxy redirection configured in vite.config.ts
+  baseURL: import.meta.env.VITE_API_BASE_URL || '', // Reads from VITE_API_BASE_URL or falls back to relative dev proxy
 });
 
 // Request Interceptor: Automatically inject Bearer JWT credentials to outgoing requests

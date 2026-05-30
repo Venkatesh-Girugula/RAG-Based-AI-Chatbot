@@ -38,3 +38,11 @@ services:
         value: '["*"]'
       - key: LOG_LEVEL
         value: "INFO"
+
+  - type: static
+    name: aerorag-frontend
+    buildCommand: cd frontend && npm install --legacy-peer-deps && npm run build
+    publishPath: frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://aerorag-backend.onrender.com
