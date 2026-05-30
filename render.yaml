@@ -2,28 +2,39 @@ services:
   - type: web
     name: aerorag-backend
     env: python
+    plan: free
     buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: GEMINI_API_KEY
         sync: false
-      - key: SIMILARITY_THRESHOLD
-        value: "0.75"
-      - key: TOP_K
-        value: "3"
+      - key: DATABASE_URL
+        value: "sqlite:///./data/chat_history.db"
+      - key: JWT_SECRET_KEY
+        value: "enterprise-rag-assistant-secret-key-2026-secure-production"
+      - key: JWT_ALGORITHM
+        value: "HS256"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
       - key: CHUNK_SIZE
         value: "500"
       - key: CHUNK_OVERLAP
         value: "50"
+      - key: SIMILARITY_THRESHOLD
+        value: "0.5"
+      - key: TOP_K
+        value: "3"
       - key: CHROMA_PERSIST_DIR
-        value: /var/data/chromadb
-      - key: SQLITE_DB_PATH
-        value: /var/data/chat_history.db
+        value: "./data/chromadb"
+      - key: RATE_LIMIT_CHAT_MAX_REQUESTS
+        value: "15"
+      - key: RATE_LIMIT_CHAT_WINDOW_SECONDS
+        value: "60"
+      - key: RATE_LIMIT_UPLOAD_MAX_REQUESTS
+        value: "5"
+      - key: RATE_LIMIT_UPLOAD_WINDOW_SECONDS
+        value: "60"
       - key: CORS_ORIGINS
-        value: '["*"]' # Lock down to Vercel domain in production settings
+        value: '["*"]'
       - key: LOG_LEVEL
-        value: INFO
-    disk:
-      name: database-storage
-      mountPath: /var/data
-      sizeGB: 1
+        value: "INFO"
