@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 import json
@@ -54,8 +55,6 @@ def on_startup():
         logger.critical(f"Database initialization failed during startup: {e}")
         # We don't crash the server here so it can serve health checks or direct API errors,
         # but we log the critical issue.
-
-import os
 
 # --- EXCEPTION HANDLING MIDDLEWARE / HANDLERS ---
 

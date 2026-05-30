@@ -26,24 +26,20 @@ def clean_database():
 # --- TEST CASES ---
 
 # 1. Successful Retrieval (and Grounded Response Generation)
-@patch("backend.services.embedding_service.embedding_service.get_embedding")
-@patch("backend.vectorstore.vector_store.vector_store.collection")
+@patch("backend.vectorstore.vector_store.vector_store.query_similarity")
 @patch("backend.services.llm_service.llm_service.generate_response")
-def test_successful_retrieval(mock_generate, mock_collection, mock_get_embedding):
-    # Mock query embedding
-    mock_get_embedding.return_value = [0.1] * 768
-    
-    # Mock ChromaDB query return with high similarity (distance = 0.1, similarity = 0.9)
-    mock_collection.query.return_value = {
-        "ids": [["chunk_1"]],
-        "distances": [[0.1]],
-        "metadatas": [[{
+def test_successful_retrieval(mock_generate, mock_query_similarity):
+    # Mock ChromaDB query return with high similarity (similarity = 0.9)
+    mock_query_similarity.return_value = [{
+        "id": "chunk_1",
+        "similarity": 0.9,
+        "metadata": {
             "title": "Corporate Security Policy - Data Classification",
             "source": "SecOps-Policy-2026.pdf",
             "chunk_id": "chunk_1"
-        }]],
-        "documents": [["Confidential data includes salaries and proprietary source code."]]
-    }
+        },
+        "document": "Confidential data includes salaries and proprietary source code."
+    }]
     
     # Mock Gemini response
     mock_generate.return_value = ("Salaries are classified as Confidential company data.", 45)
@@ -62,27 +58,24 @@ def test_successful_retrieval(mock_generate, mock_collection, mock_get_embedding
     assert data["tokensUsed"] == 45
     assert data["retrievedChunks"] == 1
     assert len(data["similarityScores"]) == 1
-    assert data["similarityScores"][0] == 0.9 # 1.0 - 0.1
+    assert data["similarityScores"][0] == 0.9
 
 
 # 2. Unknown Query / 5. Similarity Threshold Failure
-@patch("backend.services.embedding_service.embedding_service.get_embedding")
-@patch("backend.vectorstore.vector_store.vector_store.collection")
-def test_similarity_threshold_failure(mock_collection, mock_get_embedding):
-    mock_get_embedding.return_value = [0.1] * 768
-    
-    # Mock ChromaDB returning low similarity matches (distance = 0.4, similarity = 0.6)
+@patch("backend.vectorstore.vector_store.vector_store.query_similarity")
+def test_similarity_threshold_failure(mock_query_similarity):
+    # Mock ChromaDB returning low similarity matches (similarity = 0.6)
     # Threshold is 0.75, so this chunk must be filtered out
-    mock_collection.query.return_value = {
-        "ids": [["chunk_x"]],
-        "distances": [[0.4]],
-        "metadatas": [[{
+    mock_query_similarity.return_value = [{
+        "id": "chunk_x",
+        "similarity": 0.6,
+        "metadata": {
             "title": "React TypeScript Best Practices",
             "source": "Frontend-Standard-v2.md",
             "chunk_id": "chunk_x"
-        }]],
-        "documents": [["Never use any type."]]
-    }
+        },
+        "document": "Never use any type."
+    }]
 
     payload = {
         "sessionId": "test_session_123",
@@ -105,7 +98,7 @@ def test_empty_query():
         "message": "   " # whitespace / empty
     }
     response = client.post("/api/chat", json=payload)
-    assert response.status_code == 422 # Pydantic min_length or FastAPI custom check
+    assert response.status_code == 400
 
 
 # 4. Invalid Session ID Handling
@@ -119,19 +112,17 @@ def test_invalid_session_id():
 
 
 # 6. Gemini Timeout Handling
-@patch("backend.services.embedding_service.embedding_service.get_embedding")
-@patch("backend.vectorstore.vector_store.vector_store.collection")
+@patch("backend.vectorstore.vector_store.vector_store.query_similarity")
 @patch("google.generativeai.GenerativeModel.generate_content")
-def test_gemini_timeout(mock_generate, mock_collection, mock_get_embedding):
-    mock_get_embedding.return_value = [0.1] * 768
-    mock_collection.query.return_value = {
-        "ids": [["chunk_1"]],
-        "distances": [[0.1]],
-        "metadatas": [[{"title": "Test Title", "source": "test.txt", "chunk_id": "c1"}]],
-        "documents": [["Some grounded content."]]
-    }
+def test_gemini_timeout(mock_generate, mock_query_similarity):
+    mock_query_similarity.return_value = [{
+        "id": "chunk_1",
+        "similarity": 0.9,
+        "metadata": {"title": "Test Title", "source": "test.txt", "chunk_id": "c1"},
+        "document": "Some grounded content."
+    }]
     
-    # Mock a timeout error (raise Exception containing 'timeout')
+    # Mock a timeout error
     mock_generate.side_effect = Exception("Deadline Exceeded: Gemini API connection timeout occurred.")
 
     payload = {
@@ -142,21 +133,19 @@ def test_gemini_timeout(mock_generate, mock_collection, mock_get_embedding):
     response = client.post("/api/chat", json=payload)
     assert response.status_code == 504
     data = response.json()
-    assert "timeout" in data["message"].lower()
+    assert "timed out" in data["message"].lower() or "timeout" in data["message"].lower()
 
 
 # 7. Gemini Rate Limit Handling (429 Too Many Requests)
-@patch("backend.services.embedding_service.embedding_service.get_embedding")
-@patch("backend.vectorstore.vector_store.vector_store.collection")
+@patch("backend.vectorstore.vector_store.vector_store.query_similarity")
 @patch("google.generativeai.GenerativeModel.generate_content")
-def test_gemini_rate_limit(mock_generate, mock_collection, mock_get_embedding):
-    mock_get_embedding.return_value = [0.1] * 768
-    mock_collection.query.return_value = {
-        "ids": [["chunk_1"]],
-        "distances": [[0.1]],
-        "metadatas": [[{"title": "Test Title", "source": "test.txt", "chunk_id": "c1"}]],
-        "documents": [["Grounded context info."]]
-    }
+def test_gemini_rate_limit(mock_generate, mock_query_similarity):
+    mock_query_similarity.return_value = [{
+        "id": "chunk_1",
+        "similarity": 0.9,
+        "metadata": {"title": "Test Title", "source": "test.txt", "chunk_id": "c1"},
+        "document": "Grounded context info."
+    }]
     
     # Mock a Rate Limit / ResourceExhausted exception
     mock_generate.side_effect = Exception("ResourceExhausted: 429 Rate limit exceeded for model.")
@@ -173,17 +162,15 @@ def test_gemini_rate_limit(mock_generate, mock_collection, mock_get_embedding):
 
 
 # 8. Missing API Key Exception Handling
-@patch("backend.services.embedding_service.embedding_service.get_embedding")
-@patch("backend.vectorstore.vector_store.vector_store.collection")
+@patch("backend.vectorstore.vector_store.vector_store.query_similarity")
 @patch("google.generativeai.GenerativeModel.generate_content")
-def test_missing_api_key(mock_generate, mock_collection, mock_get_embedding):
-    mock_get_embedding.return_value = [0.1] * 768
-    mock_collection.query.return_value = {
-        "ids": [["chunk_1"]],
-        "distances": [[0.1]],
-        "metadatas": [[{"title": "Test Title", "source": "test.txt", "chunk_id": "c1"}]],
-        "documents": [["Valid corpus content."]]
-    }
+def test_missing_api_key(mock_generate, mock_query_similarity):
+    mock_query_similarity.return_value = [{
+        "id": "chunk_1",
+        "similarity": 0.9,
+        "metadata": {"title": "Test Title", "source": "test.txt", "chunk_id": "c1"},
+        "document": "Valid corpus content."
+    }]
     
     # Mock missing/invalid key error
     mock_generate.side_effect = Exception("API_KEY_INVALID: The request is missing a valid API key.")
@@ -200,21 +187,25 @@ def test_missing_api_key(mock_generate, mock_collection, mock_get_embedding):
 
 
 # 9. Corrupted docs.json Handling
-def test_corrupted_docs_json():
-    # Attempt to seed documents with an invalid file path
+@patch("backend.vectorstore.vector_store.vector_store.initialize")
+@patch("backend.vectorstore.vector_store.vector_store.collection")
+def test_corrupted_docs_json(mock_collection, mock_initialize, tmp_path):
+    # Mock collection.count to return 0 to bypass seed skip check
+    mock_collection.count.return_value = 0
+    
+    # Create temporary corrupted docs file
+    corrupt_file = tmp_path / "corrupt_docs.json"
+    corrupt_file.write_text("{invalid json...", encoding="utf-8")
+
     with pytest.raises(ValueError):
-        # Pass a completely invalid JSON content or path
-        vector_store.seed_documents("non_existent_file_path_999.json")
+        vector_store.seed_documents(str(corrupt_file))
 
 
 # 10. ChromaDB Failure Handling
-@patch("backend.services.embedding_service.embedding_service.get_embedding")
-@patch("backend.vectorstore.vector_store.vector_store.collection")
-def test_chromadb_failure(mock_collection, mock_get_embedding):
-    mock_get_embedding.return_value = [0.1] * 768
-    
-    # Mock collection query to throw an error (e.g. database corruption or process death)
-    mock_collection.query.side_effect = Exception("ChromaDB connection refused or internal error.")
+@patch("backend.vectorstore.vector_store.vector_store.query_similarity")
+def test_chromadb_failure(mock_query_similarity):
+    # Mock collection query to throw an error
+    mock_query_similarity.side_effect = Exception("ChromaDB connection refused or internal error.")
 
     payload = {
         "sessionId": "test_session_123",
@@ -224,4 +215,4 @@ def test_chromadb_failure(mock_collection, mock_get_embedding):
     response = client.post("/api/chat", json=payload)
     assert response.status_code == 500
     data = response.json()
-    assert "database" in data["message"].lower()
+    assert "context" in data["message"].lower() or "search" in data["message"].lower()

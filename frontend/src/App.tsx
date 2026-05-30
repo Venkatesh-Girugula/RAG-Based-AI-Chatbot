@@ -1,26 +1,25 @@
-import React, { useEffect } from 'react';
-import { useStore } from './store/useStore';
-import AuthPage from './pages/AuthPage';
-import DashboardPage from './pages/DashboardPage';
+import { useAuthStore } from './store/authStore';
+import { useUIStore } from './store/uiStore';
+import LoginPage from './pages/LoginPage';
+import ChatPage from './pages/ChatPage';
+import AdminDashboard from './pages/AdminDashboard';
 
-export const App: React.FC = () => {
-  const { isAuthenticated, sessions, createNewSession } = useStore();
+export default function App() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const activeTab = useUIStore((state) => state.activeTab);
 
-  // On mount or auth, auto-create a default chat session if the conversation queue is empty
-  useEffect(() => {
-    if (isAuthenticated && sessions.length === 0) {
-      createNewSession('Global Grounding Console');
-    }
-  }, [isAuthenticated, sessions, createNewSession]);
+  // If session is unauthenticated, redirect to sign-in portal
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 antialiased overflow-x-hidden font-sans select-none relative">
-      {isAuthenticated ? (
-        <DashboardPage />
-      ) : (
-        <AuthPage />
-      )}
-    </div>
-  );
-};
-export default App;
+  // Active tab routing
+  switch (activeTab) {
+    case 'chat':
+      return <ChatPage />;
+    case 'admin':
+      return <AdminDashboard />;
+    default:
+      return <ChatPage />;
+  }
+}
